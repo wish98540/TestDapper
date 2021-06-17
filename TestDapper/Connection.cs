@@ -12,5 +12,10 @@ namespace TestDapper
         {
             return new SqlConnection(@"Data Source=(localdb)\MSSQLLocalDB;Initial Catalog=AdventureWorks2016;Integrated Security=True;Application Name=Study_1");
         }
+
+        internal static IDbConnection GetOtherConnection()
+        {
+            return new SqlConnection();
+        }
     }
 }

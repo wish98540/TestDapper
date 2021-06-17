@@ -17,30 +17,45 @@ namespace TestDapper.Models
         public int Id { get; set; }
         public string IsRead { get; set; }
         public string Name { get; set; }
+        private string _isbn;
+        public string ISBN
+        {
+            get; set;
+            //get
+            //{
+            //    return _isbn;
+            //}
+            //set
+            //{
+            //    _isbn = value.Trim();
+            //}
+        }
+
         public void Create(Books book)
         {
             var sql = @"
-                INSERT INTO [Test].[dbo].[Books] 
-	                ([Name], [Author], [Country], [IsRead])
-                VALUES 
-	                (@Name, @Author, @Country, @IsRead)
+                INSERT INTO [Test].[dbo].[Books]
+	                ([Name], [Author], [Country], [IsRead], [ISBN])
+                VALUES
+	                (@Name, @Author, @Country, @IsRead, @ISBN)
             ";
 
             using var conn = Connection.GetConnection();
             conn.Open();
-            conn.Execute(sql, new { Name = book.Name, Author = book.Author, Country = book.Country, IsRead = book.IsRead });
+            conn.Execute(sql, new { Name = book.Name, Author = book.Author, Country = book.Country, IsRead = book.IsRead, ISBN = book.ISBN });
         }
 
         public void CreateBatch1(List<Books> books)
         {
             var sql = @"
-                INSERT INTO [Test].[dbo].[Books] 
-	                ([Name], [Author], [Country], [IsRead])
-                VALUES 
-	                (@Name, @Author, @Country, @IsRead)
+                INSERT INTO [Test].[dbo].[Books]
+	                ([Name], [Author], [Country], [IsRead], [ISBN])
+                VALUES
+	                (@Name, @Author, @Country, @IsRead, @ISBN)
             ";
 
             #region Before C# 8.0
+
             //using(var conn = Connection.GetConnection())
             //{
             //    conn.Open();
@@ -64,7 +79,7 @@ namespace TestDapper.Models
             //    }
             //}
 
-            #endregion
+            #endregion Before C# 8.0
 
             using var conn = Connection.GetConnection();
             conn.Open();
@@ -72,8 +87,8 @@ namespace TestDapper.Models
             // 匿名參數陣列
             // new[] {new{...}, new{...}, ...}
             var bookArray = new[] {
-                    new { Name = books[0].Name, Author = books[0].Author, Country = books[0].Country, IsRead = books[0].IsRead },
-                    new { Name = books[1].Name, Author = books[1].Author, Country = books[1].Country, IsRead = books[1].IsRead }
+                    new { Name = books[0].Name, Author = books[0].Author, Country = books[0].Country, IsRead = books[0].IsRead, ISBN = books[0].ISBN },
+                    new { Name = books[1].Name, Author = books[1].Author, Country = books[1].Country, IsRead = books[1].IsRead, ISBN = books[1].ISBN }
                 };
             try
             {
@@ -90,10 +105,10 @@ namespace TestDapper.Models
         public void CreateBatch2(List<Books> books)
         {
             var sql = @"
-                INSERT INTO [Test].[dbo].[Books] 
-	                ([Name], [Author], [Country], [IsRead])
-                VALUES 
-	                (@Name, @Author, @Country, @IsRead)
+                INSERT INTO [Test].[dbo].[Books]
+	                ([Name], [Author], [Country], [IsRead], [ISBN])
+                VALUES
+	                (@Name, @Author, @Country, @IsRead, @ISBN)
             ";
 
             using var conn = Connection.GetConnection();
@@ -108,6 +123,7 @@ namespace TestDapper.Models
                 parameters.Add("Author", book.Author, DbType.String, ParameterDirection.Input, 50);
                 parameters.Add("Country", book.Country, DbType.AnsiString, ParameterDirection.Input, 50);
                 parameters.Add("IsRead", book.IsRead, DbType.AnsiStringFixedLength, ParameterDirection.Input, 1);
+                parameters.Add("ISBN", book.ISBN, DbType.AnsiStringFixedLength, ParameterDirection.Input, 13);
                 parameterList.Add(parameters);
             });
 
@@ -126,10 +142,10 @@ namespace TestDapper.Models
         public void CreateBatch3(List<Books> books)
         {
             var sql = @"
-                INSERT INTO [Test].[dbo].[Books] 
-	                ([Name], [Author], [Country], [IsRead])
-                VALUES 
-	                (@Name, @Author, @Country, @IsRead)
+                INSERT INTO [Test].[dbo].[Books]
+	                ([Name], [Author], [Country], [IsRead], [ISBN])
+                VALUES
+	                (@Name, @Author, @Country, @IsRead, @ISBN)
             ";
 
             using var conn = Connection.GetConnection();
@@ -147,12 +163,100 @@ namespace TestDapper.Models
                 throw;
             }
         }
+
+        public void CreateByTransaction1(List<Books> books)
+        {
+            var sql = @"
+                INSERT INTO [Test].[dbo].[Books]
+	                ([Name], [Author], [Country], [IsRead])
+                VALUES
+	                (@Name, @Author, @Country, @IsRead)
+            ";
+
+            #region Before C# 8.0
+
+            //using (var conn = Connection.GetConnection())
+            //{
+            //    conn.Open();
+            //    using (var tran = conn.BeginTransaction())
+            //    {
+            //        try
+            //        {
+            //            conn.Execute(sql, books, tran);
+            //            tran.Commit();
+            //        }
+            //        catch (Exception)
+            //        {
+            //            tran.Rollback();
+            //            throw;
+            //        }
+            //    }
+            //}
+
+            #endregion Before C# 8.0
+
+            using var conn = Connection.GetConnection();
+            conn.Open();
+            using var tran = conn.BeginTransaction();
+
+            try
+            {
+                // Execute(sql, params, transaction, timeout, commandType)
+                conn.Execute(sql, books, tran);
+                tran.Commit();
+            }
+            catch (Exception)
+            {
+                tran.Rollback();
+                throw;
+            }
+        }
+
+        public void CreateByTransaction2(List<Books> books)
+        {
+            // TODO Transaction Scope 分散式交易
+            var sql = @"
+                INSERT INTO [Test].[dbo].[Books]
+	                ([Name], [Author], [Country], [IsRead])
+                VALUES
+	                (@Name, @Author, @Country, @IsRead)
+            ";
+
+            try
+            {
+                // using System.Transactions
+                // 使用交易區塊，處理分散式交易
+                using var tranScope = new TransactionScope();
+                using var conn1 = Connection.GetConnection();
+                conn1.Open();
+                // 使用 TransactionScope 不用在參數帶 Transaction
+                conn1.Execute(sql, books);
+
+                // 當 conn1 的事務處理完成才開啟 conn2 連線
+                // 在跨資料庫伺服器交易時，透過 MSDTC (分散式交易調節器) 確保跨伺服器操作可以受到分散式交易調節器保護
+                using var conn2 = Connection.GetOtherConnection();
+                conn2.Open();
+                var ids = books.Select(x => x.Id).ToArray();
+                var sql2 = "UPDATE ... FROM ... WHERE [Id] IN @Ids ";
+                conn2.Execute(sql2, new { Ids = ids });
+
+                // 透過 TransactionScope 調節跨資料庫伺服器交易
+                // 全部操作成功，才承認交易
+                // 任一操作失敗，全部 RollBack
+                tranScope.Complete();
+            }
+            catch (Exception)
+            {
+                throw;
+            }
+        }
+
         public void CreateWithObject(Books book)
         {
             var sql = @"
-                INSERT INTO [Test].[dbo].[Books] 
+                INSERT INTO [Test].[dbo].[Books]
 	                ([Name], [Author], [Country], [IsRead])
-                VALUES 
+                VALUES
 	                (@Name, @Author, @Country, @IsRead)
             ";
 
@@ -161,10 +265,35 @@ namespace TestDapper.Models
             conn.Execute(sql, book);
         }
 
+        public void DeleteById()
+        {
+            var sql = @"
+                DELETE FROM  [Test].[dbo].[Books]
+                WHERE [Id] IN @Ids
+            ";
+
+            using var conn = Connection.GetConnection();
+            conn.Open();
+            using var tran = conn.BeginTransaction();
+
+            try
+            {
+                var bookName = "全部一起修改~~";
+                var ids = new List<int> { 1, 2, 3, 4, 5 };
+                conn.Execute(sql, new { Ids = ids }, tran);
+                tran.Commit();
+            }
+            catch (Exception)
+            {
+                tran.Rollback();
+                throw;
+            }
+        }
+
         public Books Get(string name)
         {
             var sql = @"
-                SELECT * FROM [Test].[dbo].[Books] 
+                SELECT * FROM [Test].[dbo].[Books]
                 WHERE [Name] = @Name
             ";
             var conn = Connection.GetConnection();
@@ -174,7 +303,7 @@ namespace TestDapper.Models
         public Books GetByCountry(string country)
         {
             var sql = @"
-                SELECT * FROM [Test].[dbo].[Books] 
+                SELECT * FROM [Test].[dbo].[Books]
                 WHERE [Country] = @Country
             ";
             var conn = Connection.GetConnection();
@@ -184,7 +313,7 @@ namespace TestDapper.Models
         public Books GetById(int id)
         {
             var sql = @"
-                SELECT * FROM [Test].[dbo].[Books] 
+                SELECT * FROM [Test].[dbo].[Books]
                 WHERE [Id] = @Id
             ";
             var conn = Connection.GetConnection();
@@ -193,10 +322,20 @@ namespace TestDapper.Models
             return conn.QueryFirstOrDefault<Books>(sql, parameters);
         }
 
+        public Books GetById_UseStoreProcedure()
+        {
+            var sql = @"[Test].[dbo].[usp_GetBookById]";
+            var conn = Connection.GetConnection();
+            var id = 1007;
+            var parameters = new DynamicParameters();
+            parameters.Add("Id", id, DbType.Int32, ParameterDirection.Input);
+            return conn.QueryFirstOrDefault<Books>(sql, parameters, commandType: CommandType.StoredProcedure);
+        }
+
         public Books GetByIsRead(string isRead)
         {
             var sql = @"
-                SELECT * FROM [Test].[dbo].[Books] 
+                SELECT * FROM [Test].[dbo].[Books]
                 WHERE [IsRead] = @IsRead
             ";
             var conn = Connection.GetConnection();
@@ -206,7 +345,7 @@ namespace TestDapper.Models
         public Books GetByName(string name)
         {
             var sql = @"
-                SELECT * FROM [Test].[dbo].[Books] 
+                SELECT * FROM [Test].[dbo].[Books]
                 WHERE [Name] = @Name
             ";
             var conn = Connection.GetConnection();
@@ -216,6 +355,39 @@ namespace TestDapper.Models
             parameters.Add("Name", name, DbType.String, ParameterDirection.Input, 50);
             return conn.QueryFirstOrDefault<Books>(sql, parameters);
         }
+
+        public DataTable GetDataTable()
+        {
+            var sql = @"
+                SELECT * FROM [Test].[dbo].[Books]
+                WHERE [Id] IN @Ids
+            ";
+            using var conn = Connection.GetConnection();
+            var ids = new List<int> { 1, 2, 3, 4, 5 };
+            var table = new DataTable("Books");
+            // 取得 IDataReader
+            using var dataReader = conn.ExecuteReader(sql, new { Ids = ids });
+            // 將 IDataReader 加載至 Table 中
+            table.Load(dataReader);
+            return table;
+        }
+
+        public int GetIdByScalar()
+        {
+            var sql = @"
+                SELECT TOP (1000) [Id]
+                      ,[Name]
+                      ,[Author]
+                      ,[Country]
+                      ,[IsRead]
+                      ,[AddDate]
+                  FROM [Test].[dbo].[Books]
+            ";
+            using var conn = Connection.GetConnection();
+            // 返回 第一筆資料，第一個欄位，因此會返回 ID(1)
+            return conn.ExecuteScalar<int>(sql);
+        }
+
         public List<Books> GetInAddDateList()
         {
             var sql = @"
@@ -225,7 +397,8 @@ namespace TestDapper.Models
             var AddDate = new List<DateTime> {
                 new DateTime(2021, 06, 12),
                 new DateTime(2021, 06, 13),
-                new DateTime(2021, 06, 14)
+                new DateTime(2021, 06, 14),
+                new DateTime(2021, 06, 17)
             };
 
             var conn = Connection.GetConnection();
@@ -374,7 +547,6 @@ namespace TestDapper.Models
                  return conn.QueryFirstOrDefault<Books>(sql, new { Id = id });
              }).ToList();
 
-
             return result;
         }
 
@@ -387,38 +559,6 @@ namespace TestDapper.Models
             }).ToList();
 
             return result;
-        }
-
-        public DataTable GetDataTable()
-        {
-            var sql = @"
-                SELECT * FROM [Test].[dbo].[Books]
-                WHERE [Id] IN @Ids
-            ";
-            using var conn = Connection.GetConnection();
-            var ids = new List<int> { 1, 2, 3, 4, 5 };
-            var table = new DataTable("Books");
-            // 取得 IDataReader
-            using var dataReader = conn.ExecuteReader(sql, new { Ids = ids });
-            // 將 IDataReader 加載至 Table 中
-            table.Load(dataReader);
-            return table;
-        }
-
-        public int GetIdByScalar()
-        {
-            var sql = @"
-                SELECT TOP (1000) [Id]
-                      ,[Name]
-                      ,[Author]
-                      ,[Country]
-                      ,[IsRead]
-                      ,[AddDate]
-                  FROM [Test].[dbo].[Books]
-            ";
-            using var conn = Connection.GetConnection();
-            // 返回 第一筆資料，第一個欄位，因此會返回 ID(1)
-            return conn.ExecuteScalar<int>(sql);
         }
 
         public void UpdateById()
@@ -450,82 +590,6 @@ namespace TestDapper.Models
             catch (Exception)
             {
                 tran.Rollback();
-                throw;
-            }
-        }
-
-        public void DeleteById()
-        {
-            var sql = @"
-                DELETE FROM  [Test].[dbo].[Books]
-                WHERE [Id] IN @Ids
-            ";
-
-            using var conn = Connection.GetConnection();
-            conn.Open();
-            using var tran = conn.BeginTransaction();
-
-            try
-            {
-                var bookName = "全部一起修改~~";
-                var ids = new List<int> { 1, 2, 3, 4, 5 };
-                conn.Execute(sql, new { Ids = ids}, tran);
-                tran.Commit();
-            }
-            catch (Exception)
-            {
-                tran.Rollback();
-                throw;
-            }
-        }
-
-        public void CreateByTransaction1(List<Books> books)
-        {
-            var sql = @"
-                INSERT INTO [Test].[dbo].[Books] 
-	                ([Name], [Author], [Country], [IsRead])
-                VALUES 
-	                (@Name, @Author, @Country, @IsRead)
-            ";
-
-            using var conn = Connection.GetConnection();
-            conn.Open();
-            using var tran = conn.BeginTransaction();
-
-            try
-            {
-                conn.Execute(sql, books, tran);
-                tran.Commit();
-            }
-            catch (Exception)
-            {
-                tran.Rollback();
-                throw;
-            }
-        }
-
-        public void CreateByTransaction2(List<Books> books)
-        {
-            // TODO Transaction Scope 分散式交易
-            var sql = @"
-                INSERT INTO [Test].[dbo].[Books] 
-	                ([Name], [Author], [Country], [IsRead])
-                VALUES 
-	                (@Name, @Author, @Country, @IsRead)
-            ";
-
-            // using System.Transactions
-            using var tranScope = new TransactionScope();
-            using var conn = Connection.GetConnection();
-            conn.Open();
-
-            try
-            {
-                conn.Execute(sql, books);
-                tranScope.Complete();
-            }
-            catch (Exception)
-            {
                 throw;
             }
         }
